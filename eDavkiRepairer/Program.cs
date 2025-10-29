@@ -1,27 +1,24 @@
-﻿
-using Dapper;
-using Datapac.ExternalServicesGateway.Extensions;
-using Datapac.Posybe.Common.Encryption;
-using Datapac.Posybe.POS.Core.Commands.ClosureCommands;
-using Datapac.Posybe.POS.Domain.Extensions;
+﻿using Datapac.Posybe.POS.Domain.Extensions;
 using Datapac.Posybe.POS.Fiscal.SLO.Api;
 using Datapac.Posybe.POS.Fiscal.SLO.Api.Model;
 using Datapac.Posybe.POS.Fiscal.SLO.Extensions;
 using Datapac.Posybe.POS.Model.Configuration.Cloud.Fiscal;
-using Datapac.Posybe.POS.Model.Fiscal.EDavki;
-using Datapac.Posybe.POS.Model.Fiscal.Results.SLO;
-using Microsoft.Data.Sqlite;
+using eDavkiRepairer;
+using eDavkiRepairer.Extensions;
+using eDavkiRepairer.Service;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 
 public static partial class Program
 {
     private static IEDavkiApiClient _eDavkiApiClient;
-    private static string db = @"C:\Users\behro\Downloads\P1 POS.db";
-    private static string resultPaht = @"C:\Users\behro\Downloads\Results";
+    private static QueryService _queryService;
     private static X509Certificate2? _certificate;
+    private static eDavkiRepairerOptions _appSettings;
 
     static Program()
     {
@@ -31,28 +28,33 @@ public static partial class Program
         var monitor = provider.GetRequiredService<IOptionsMonitor<SloFiscalOptions>>();
 
         _eDavkiApiClient = new EDavkiApiClient(new LoggerFactory().CreateLogger<EDavkiApiClient>(), new HttpClientFactory(() => _certificate), monitor);
+
+        var config = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .Build();
+        _appSettings = config.GetSection("eDavkiRepairerOptions").Get<eDavkiRepairerOptions>();
+
+        _queryService = new QueryService(_appSettings);
     }
 
     public static async Task Main(string[] args)
     {
-        var path = @"C:\Users\behro\Downloads\ExtractedInvoices\670-1";
-        int lastReceiptNumber = 1213;
-        int sellerTaxNumber = 57536163;
-        string from = "2025-01-01";
-        string to = "2025-10-26";
+        int? sellerTaxNumber = await GetSellerTaxNumberAsync(); //57536163;
+        int lastReceiptNumber = await _queryService.GetLastReceiptNumberAsync(); //TODO overide from parameter.
+        int receiptNumber = lastReceiptNumber;
+        _certificate = await _queryService.GetCertificateAsync();
 
-        _certificate = await GetCertificateAsync(db);
+        var requests = GetOriginalRequests(_appSettings.RequestsDirectory).ToList();
 
-        var requests = GetOriginalRequests(path).ToList();
-
-        var vatCustomers = await GetCustomerVatNumbersAsync(from, to, db);
+        var vatCustomers = await _queryService.GetCustomerVatNumbersAsync(_appSettings.From, _appSettings.To);
         PairReqeustsWithVatCustomers(requests, vatCustomers);
 
         var repairRequests = requests.Select(x => CreateRepairRequest(++lastReceiptNumber, sellerTaxNumber, x)).ToList();
 
         foreach (var request in repairRequests)
         {
-            Console.Write($"Original receipt id: {GetReferencInvoiceNumber}");
+            Console.Write($"Original receipt id: {GetReferencInvoiceNumber(request)}");
             if (!string.IsNullOrEmpty(request.InvoiceRequestDto.InvoiceRequest.Invoice.CustomerVATNumber))
             {
                 Console.WriteLine($", CustomerVatNumber: {request.InvoiceRequestDto.InvoiceRequest.Invoice.CustomerVATNumber}");
@@ -63,28 +65,28 @@ public static partial class Program
             }
         }
 
-        Console.WriteLine($"\r\nPath {path} contains {requests.Count} requests. Do you want to proceed? y\\n");
+        Console.WriteLine($"\r\nPath {_appSettings.RequestsDirectory} contains {requests.Count} requests. Last receipt number is {receiptNumber}. Do you want to proceed? y\\n");
         var proceed = Console.ReadKey(true);
         if (proceed.Key != ConsoleKey.Y)
         {
             return;
         }
 
-#if DEBUG
-        string? ou = _certificate.Subject
-                    .Split(',')
-                    .Select(part => part.Trim())
-                    .Where(part => part.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
-                    .Select(part => part.Substring(3))
-                    .FirstOrDefault();
-        var taxNumber = int.Parse(ou);
+//#if DEBUG
+//        string? ou = _certificate.Subject
+//                    .Split(',')
+//                    .Select(part => part.Trim())
+//                    .Where(part => part.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
+//                    .Select(part => part.Substring(3))
+//                    .FirstOrDefault();
+//        var taxNumber = int.Parse(ou);
 
-        foreach (var req in repairRequests)
-        {
-            req.InvoiceRequestDto.InvoiceRequest.Invoice.TaxNumber = taxNumber;
-            req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
-        }
-#endif
+//        foreach (var req in repairRequests)
+//        {
+//            req.InvoiceRequestDto.InvoiceRequest.Invoice.TaxNumber = taxNumber;
+//            req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
+//        }
+//#endif
 
 
 
@@ -94,12 +96,24 @@ public static partial class Program
             return;
         }
 
-        await SendRequestsAsync(repairRequests, _certificate);
+        (var success, var failed) = await SendRequestsAsync(repairRequests, _certificate);
+        Console.WriteLine($"\r\nFinished processing requests. Success: {success}, Failed: {failed}");
     }
 
-    private static async Task SendRequestsAsync(List<InvoiceRequest> repairRequests, X509Certificate2 certificate)
+    private static async Task<int?> GetSellerTaxNumberAsync()
+    {
+        int bpTaxIdentification = await _queryService.GetBusinessPremiseTaxIdentificationNumberAsync();
+        var merchantTaxNumberString = await _queryService.GetMerchatnTaxIdentificationNumberAsync();
+        int merchantTaxNumber = merchantTaxNumberString.GetTaxNumber();
+
+        return bpTaxIdentification != merchantTaxNumber ? merchantTaxNumber : null;
+    }
+
+    private static async Task<(int, int)> SendRequestsAsync(List<InvoiceRequest> repairRequests, X509Certificate2 certificate)
     {
         int i = 0;
+        int success = 0;
+        int failed = 0;
         foreach (var requestDto in repairRequests)
         {
             Console.Write($"Sending receipt {++i}/{repairRequests.Count}\t{GetReferencInvoiceNumber(requestDto)}");
@@ -112,20 +126,24 @@ public static partial class Program
             {
                 var reasonCode = fiscalizationResult.GetReasonCode();
                 Console.WriteLine($"\tFailed to fiscalize receipt {requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier}: {reasonCode}");
-                MoveTo(Path.Combine(resultPaht, "Failed"), requestDto.FileName);
+                MoveTo(Path.Combine(_appSettings.ResultPath, "Failed"), requestDto.FileName);
+                failed++;
                 continue;
             }
             else
             {
 
                 Console.WriteLine($"\tSuccessfully fiscalized");
-                MoveSucessTo(Path.Combine(resultPaht, "Success"),
+                success++;
+                MoveSucessTo(Path.Combine(_appSettings.ResultPath, "Success"),
                              requestDto.FileName,
                              GetReferencInvoiceNumber(requestDto),
                              requestDto.InvoiceRequestDto,
                              (await response.Content.ReadAsStringAsync()).GetPayload());
+                await _queryService.UpdateInvoiceNumber(int.Parse(requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.InvoiceNumber));
             }
         }
+        return (success, failed);
     }
 
     private static void MoveSucessTo(string directory,
@@ -144,7 +162,7 @@ public static partial class Program
             Directory.CreateDirectory(subDirectory);
         }
 
-        File.WriteAllText(Path.Combine(subDirectory, $"repaired.json"), invoiceRequestDto.Serialize());
+        File.WriteAllText(Path.Combine(subDirectory, $"repaired.json"), JsonSerializer.Serialize(invoiceRequestDto, new JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllText(Path.Combine(subDirectory, $"repairedResponse.json"), responseBody);
         File.Move(fileName, Path.Combine(subDirectory, "original.json"));
     }
@@ -156,26 +174,7 @@ public static partial class Program
             Directory.CreateDirectory(directory);
         }
 
-        File.Move(fileName, Path.Combine(resultPaht, Path.GetFileName(fileName)));
-    }
-
-    private static async Task<X509Certificate2?> GetCertificateAsync(string db)
-    {
-        string connectionString = $"Data Source={db};";
-
-        using (var connection = new SqliteConnection(connectionString))
-        {
-            connection.Open();
-
-            // Define your SQL query
-            string sql = @$"select s.Value from Storage s where s.Key = 'EDavkiInfo'";
-
-            // Execute the query with parameters
-            var eDavkiInfo = await connection.QueryFirstOrDefaultAsync<string>(sql);
-            var eDavki = eDavkiInfo?.DeserializeOrDefault<EDavkiInfo>();
-
-            return eDavki is null ? null : new X509Certificate2(Path.Combine(@"C:\Datapac\Pos\App", eDavki.ClientCertificateFileName), EncryptionHelper.Decrypt(eDavki.ClientCertificatePassword, EncryptionKeys.Password));
-        }
+        File.Move(fileName, Path.Combine(_appSettings.ResultPath, Path.GetFileName(fileName)));
     }
 
     private static void PairReqeustsWithVatCustomers(List<InvoiceRequest> repairRequests, List<VatCustomer> vatCustomers)
@@ -191,33 +190,7 @@ public static partial class Program
         }
     }
 
-    private static async Task<List<VatCustomer>> GetCustomerVatNumbersAsync(string from, string to, string db)
-    {
-        string connectionString = $"Data Source={db};";
-
-        using (var connection = new SqliteConnection(connectionString))
-        {
-            connection.Open();
-
-            // Define your SQL query
-            string sql = @$"select st.CustomerVatIdentificationNumber as VatNumber, st.FRegAdditionalInfo as AdditionalInfo 
-                           from SalesTransactions st 
-                           where st.CustomerVatIdentificationNumber not null
-                           and st.FRegRegistrationDate BETWEEN '{from}' AND '{to}'";
-
-            // Execute the query with parameters
-            var vatCustomers = await connection.QueryAsync<VatCustomer>(sql);
-
-            foreach (var customer in vatCustomers)
-            {
-                customer.FiscalizationResult = customer.AdditionalInfo.DeserializeOrDefault<FiscalizationResult>();
-            }
-
-            return vatCustomers.ToList();
-        }
-    }
-
-    private static InvoiceRequest CreateRepairRequest(int lastReceiptNumber, int sellerTaxNumber, InvoiceRequest request)
+    private static InvoiceRequest CreateRepairRequest(int lastReceiptNumber, int? sellerTaxNumber, InvoiceRequest request)
     {
         request.InvoiceRequestDto.InvoiceRequest.Invoice.ReferenceInvoice =
                         [new ReferenceInvoice
@@ -231,7 +204,7 @@ public static partial class Program
                     ReferenceInvoiceIssueDateTime = request.InvoiceRequestDto.InvoiceRequest.Invoice.IssueDateTime
                 }];
 
-        request.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.InvoiceNumber = (++lastReceiptNumber).ToString();
+        request.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.InvoiceNumber = lastReceiptNumber.ToString();
         request.InvoiceRequestDto.InvoiceRequest.Invoice.IssueDateTime = DateTime.Now;
 
         foreach (var taxPerSeller in request.InvoiceRequestDto.InvoiceRequest.Invoice.TaxesPerSeller)
@@ -242,7 +215,7 @@ public static partial class Program
         request.InvoiceRequestDto.InvoiceRequest.Header.MessageID = Guid.NewGuid().ToString();
         request.InvoiceRequestDto.InvoiceRequest.Header.DateTime = DateTime.Now;
         request.InvoiceRequestDto.InvoiceRequest.Invoice.ProtectedID = _certificate.GetProtectiveMark(
-            new Datapac.Posybe.POS.Fiscal.SLO.Model.FiscalInformation 
+            new Datapac.Posybe.POS.Fiscal.SLO.Model.FiscalInformation
             {
                 BusinessPremiseID = request.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID,
                 ElectronicDeviceID = request.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.ElectronicDeviceID,
@@ -278,11 +251,5 @@ public static partial class Program
     private static string GetReferencInvoiceNumber(InvoiceRequest requestDto)
     {
         return $"{requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.ReferenceInvoice.FirstOrDefault().ReferenceInvoiceIdentifier.BusinessPremiseID}-{requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.ReferenceInvoice.FirstOrDefault().ReferenceInvoiceIdentifier.ElectronicDeviceID}-{requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.ReferenceInvoice.FirstOrDefault().ReferenceInvoiceIdentifier.InvoiceNumber}";
-    }
-
-    internal class InvoiceRequest
-    {
-        public string FileName { get; set; }
-        public InvoiceRequestDto InvoiceRequestDto { get; set; }
     }
 }
