@@ -72,21 +72,21 @@ public static partial class Program
             return;
         }
 
-//#if DEBUG
-//        string? ou = _certificate.Subject
-//                    .Split(',')
-//                    .Select(part => part.Trim())
-//                    .Where(part => part.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
-//                    .Select(part => part.Substring(3))
-//                    .FirstOrDefault();
-//        var taxNumber = int.Parse(ou);
+#if DEBUG
+        string? ou = _certificate.Subject
+                    .Split(',')
+                    .Select(part => part.Trim())
+                    .Where(part => part.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
+                    .Select(part => part.Substring(3))
+                    .FirstOrDefault();
+        var taxNumber = int.Parse(ou);
 
-//        foreach (var req in repairRequests)
-//        {
-//            req.InvoiceRequestDto.InvoiceRequest.Invoice.TaxNumber = taxNumber;
-//            req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
-//        }
-//#endif
+        foreach (var req in repairRequests)
+        {
+            req.InvoiceRequestDto.InvoiceRequest.Invoice.TaxNumber = taxNumber;
+            req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
+        }
+#endif
 
 
 
@@ -174,7 +174,7 @@ public static partial class Program
             Directory.CreateDirectory(directory);
         }
 
-        File.Move(fileName, Path.Combine(_appSettings.ResultPath, Path.GetFileName(fileName)));
+        File.Move(fileName, Path.Combine(directory, Path.GetFileName(fileName)));
     }
 
     private static void PairReqeustsWithVatCustomers(List<InvoiceRequest> repairRequests, List<VatCustomer> vatCustomers)
