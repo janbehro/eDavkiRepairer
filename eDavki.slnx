@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="../../../Documents/Repo/Posybe2/DesktopPOS/Modules/Fiscal/Datapac.Posybe.POS.Fiscal.SLO/Datapac.Posybe.POS.Fiscal.SLO.csproj" />
+  <Project Path="eDavki/eDavki.csproj" />
+  <Project Path="eDavkiRepairer/eDavkiRepairer.csproj" Id="a8432e59-5491-4a6b-9928-050bda103f22" />
+</Solution>
