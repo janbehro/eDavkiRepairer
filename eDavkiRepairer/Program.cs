@@ -72,21 +72,21 @@ public static partial class Program
             return;
         }
 
-#if DEBUG
-        string? ou = _certificate.Subject
-                    .Split(',')
-                    .Select(part => part.Trim())
-                    .Where(part => part.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
-                    .Select(part => part.Substring(3))
-                    .FirstOrDefault();
-        var taxNumber = int.Parse(ou);
+//#if DEBUG
+//        string? ou = _certificate.Subject
+//                    .Split(',')
+//                    .Select(part => part.Trim())
+//                    .Where(part => part.StartsWith("OU=", StringComparison.OrdinalIgnoreCase))
+//                    .Select(part => part.Substring(3))
+//                    .FirstOrDefault();
+//        var taxNumber = int.Parse(ou);
 
-        foreach (var req in repairRequests)
-        {
-            req.InvoiceRequestDto.InvoiceRequest.Invoice.TaxNumber = taxNumber;
-            req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
-        }
-#endif
+//        foreach (var req in repairRequests)
+//        {
+//            req.InvoiceRequestDto.InvoiceRequest.Invoice.TaxNumber = taxNumber;
+//            req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
+//        }
+//#endif
 
 
 
