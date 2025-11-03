@@ -2,6 +2,7 @@
 
 internal class eDavkiRepairerOptions
 {
+    public string eDavkiBaseAddress { get; set; }
     public string RequestsDirectory { get; set; }
     public string PosDBFileName { get; set; }
     public string ResultPath { get; set; }

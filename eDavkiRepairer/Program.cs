@@ -22,18 +22,19 @@ public static partial class Program
 
     static Program()
     {
-        var services = new ServiceCollection();
-        services.Configure<SloFiscalOptions>(opt => opt.BaseUrl = "https://blagajne-test.fu.gov.si:9002");
-        using var provider = services.BuildServiceProvider();
-        var monitor = provider.GetRequiredService<IOptionsMonitor<SloFiscalOptions>>();
-
-        _eDavkiApiClient = new EDavkiApiClient(new LoggerFactory().CreateLogger<EDavkiApiClient>(), new HttpClientFactory(() => _certificate), monitor);
-
         var config = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .Build();
         _appSettings = config.GetSection("eDavkiRepairerOptions").Get<eDavkiRepairerOptions>();
+
+        var services = new ServiceCollection();
+        services.Configure<SloFiscalOptions>(opt => opt.BaseUrl = _appSettings.eDavkiBaseAddress);
+        using var provider = services.BuildServiceProvider();
+        var monitor = provider.GetRequiredService<IOptionsMonitor<SloFiscalOptions>>();
+
+        _eDavkiApiClient = new EDavkiApiClient(new LoggerFactory().CreateLogger<EDavkiApiClient>(), new HttpClientFactory(() => _certificate), monitor);
+
 
         _queryService = new QueryService(_appSettings);
     }
