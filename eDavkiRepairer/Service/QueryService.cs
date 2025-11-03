@@ -37,9 +37,9 @@ internal class QueryService
 
         using var connection = new SqliteConnection(connectionString);
         connection.Open();
-        string sql = @$"select st.CustomerVatIdentificationNumber as VatNumber, st.FRegAdditionalInfo as AdditionalInfo 
+        string sql = @$"select st.CustomerVatIdentificationNumber as VatNumber, st.CustomerTaxIdentificationNumber as TaxNumber, st.FRegAdditionalInfo as AdditionalInfo 
                         from SalesTransactions st 
-                        where st.CustomerVatIdentificationNumber not null
+                        where (st.CustomerVatIdentificationNumber not null OR st.CustomerTaxIdentificationNumber not null)
                         and st.FRegRegistrationDate BETWEEN @from AND @to";
         var vatCustomers = await connection.QueryAsync<VatCustomer>(sql, param: new { from, to });
 

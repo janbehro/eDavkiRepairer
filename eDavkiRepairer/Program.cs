@@ -186,7 +186,15 @@ public static partial class Program
             {
                 continue;
             }
-            request.InvoiceRequestDto.InvoiceRequest.Invoice.CustomerVATNumber = customer.VatNumber;
+
+            if (string.IsNullOrEmpty(customer.VatNumber))
+            {
+                var f = customer.TaxNumber;
+            }
+
+            request.InvoiceRequestDto.InvoiceRequest.Invoice.CustomerVATNumber = !string.IsNullOrEmpty(customer.VatNumber) ? 
+                customer.VatNumber : 
+                customer.TaxNumber;
         }
     }
 

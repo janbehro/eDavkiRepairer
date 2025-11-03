@@ -3,6 +3,7 @@
 public class VatCustomer
 {
     public string VatNumber { get; set; }
+    public string TaxNumber { get; set; }
     public string AdditionalInfo { get; set; }
     public FiscalizationResult? FiscalizationResult { get; set; }
 }
