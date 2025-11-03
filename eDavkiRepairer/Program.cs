@@ -126,7 +126,6 @@ public static partial class Program
             {
                 var reasonCode = fiscalizationResult.GetReasonCode();
                 Console.WriteLine($"\tFailed to fiscalize receipt {requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier}: {reasonCode}");
-                MoveTo(Path.Combine(_appSettings.ResultPath, "Failed"), requestDto.FileName);
                 failed++;
                 continue;
             }
