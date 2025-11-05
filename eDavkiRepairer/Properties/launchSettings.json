@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "eDavkiRepairer": {
+      "commandName": "Project",
+      "commandLineArgs": "-includeOnly 4-105-0-1-87-0,4-105-0-1-106-0"
+    }
+  }
+}

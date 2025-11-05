@@ -6,5 +6,6 @@ public static partial class Program
     {
         public string FileName { get; set; }
         public InvoiceRequestDto InvoiceRequestDto { get; set; }
+        public string? OriginalGlobalSalesTransactionId { get; set; }
     }
 }

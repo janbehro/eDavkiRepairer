@@ -8,5 +8,7 @@ internal class eDavkiRepairerOptions
     public string ResultPath { get; set; }
     public DateTime From { get; set; }
     public DateTime To { get; set; }
+    public DateTime? VatNumberDateFrom { get; set; }
+    public DateTime? VatNumberDateTo { get; set; }
     public string PosDirectory { get; set; }
 }

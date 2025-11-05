@@ -4,6 +4,7 @@ using Datapac.Posybe.POS.Domain.Extensions;
 using Datapac.Posybe.POS.Model.Fiscal.EDavki;
 using Datapac.Posybe.POS.Model.Fiscal.Results.SLO;
 using Datapac.Posybe.POS.Model.Pos;
+using Datapac.Posybe.POS.Model.SalesTransaction;
 using Microsoft.Data.Sqlite;
 using System.Security.Cryptography.X509Certificates;
 
@@ -118,8 +119,64 @@ internal class QueryService
         var result = await connection.ExecuteAsync(@"UPDATE SalesTransactions
                                                      SET FRegAdditionalInfo = json_set(FRegAdditionalInfo, '$.ReceiptNumber', @ReceiptNumber)
                                                      WHERE Id = @Id;", param: new { ReceiptNumber = invoiceNumber, Id = record.Id });
+    }
 
+    public async Task<IEnumerable<ReceiptInfo>> GetSalesTransactionWithoutVatNumberAsync(DateTime dateFrom, DateTime dateTo, List<string> includeOnlySalesTransactions = null)
+    {
+        string connectionString = $"Data Source={_options.PosDBFileName};";
 
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        string sql = @$"select
+	                        st.GlobalSalesTransactionId,
+	                        json_extract(st.FRegAdditionalInfo, '$.LocationCode') as BusinessPremiseID,
+	                        json_extract(st.FRegAdditionalInfo, '$.PosNumber') as DeviceId,
+	                        json_extract(st.FRegAdditionalInfo, '$.ReceiptNumber') as ReceiptId,
+	                        st.Date, st.CustomerVatIdentificationNumber, st.CustomerTaxIdentificationNumber, st.TotalAmount,
+	                        u.TaxIdentificationNumber as OperatorTaxNumber,
+	                        va.Id, 	va.Vat_Value as VatValue, va.BaseAmount, va.TaxAmount
+                        from SalesTransactions st
+                        join VatAmount va on va.SalesTransactionId = st.Id
+                        join Users u on u.ExternalId = st.CashierId
+                        where
+	                        st.CustomerVatIdentificationNumber is NULL
+	                        and st.CustomerTaxIdentificationNumber is not NULL";
+
+        if (includeOnlySalesTransactions is null || !includeOnlySalesTransactions.Any())
+        {
+            sql += " and st.Date BETWEEN @dateFrom and @dateTo";
+        }
+        else
+        {
+            sql += " and st.GlobalSalesTransactionId in @includeOnlySalesTransactions";
+        }
+
+        Dictionary<string, ReceiptInfo> receiptDict = new();
+        return (await connection.QueryAsync<ReceiptInfo>(sql,
+            new Type[]
+            {
+                typeof(ReceiptInfo),
+                typeof(VatAmount)
+            },
+            (obj) =>
+            {
+                var receiptInfo = obj[0] as ReceiptInfo;
+                var vatAmount = obj[1] as VatAmount;
+
+                if (receiptDict.ContainsKey(receiptInfo!.GlobalSalesTransactionId))
+                {
+                    receiptDict[receiptInfo.GlobalSalesTransactionId].VatAmounts.Add(vatAmount!);
+                    return null;
+                }
+                else
+                {
+                    receiptInfo!.VatAmounts = new List<VatAmount> { vatAmount! };
+                    receiptDict.Add(receiptInfo.GlobalSalesTransactionId, receiptInfo);
+                }
+                return receiptDict[receiptInfo.GlobalSalesTransactionId];
+            },
+            param: new { dateFrom, dateTo, includeOnlySalesTransactions },
+            splitOn: "GlobalSalesTransactionId,Id")).Where(x => x != null).ToList();
     }
 
     private class Record
