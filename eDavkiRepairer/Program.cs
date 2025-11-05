@@ -49,7 +49,16 @@ public static partial class Program
 
         var requests = GetOriginalRequests(_appSettings.RequestsDirectory).ToList();
 
-        var vatCustomers = await _queryService.GetCustomerVatNumbersAsync(_appSettings.From, _appSettings.To);
+        var sorted = requests.OrderBy(x => x.InvoiceRequestDto.InvoiceRequest.Header.DateTime);
+        var firstRequestDateTime = sorted.FirstOrDefault();
+        var lastRequestDateTime = sorted.LastOrDefault();
+
+        var requestFrom = firstRequestDateTime?.InvoiceRequestDto?.InvoiceRequest?.Header?.DateTime;
+        var requestTo = lastRequestDateTime?.InvoiceRequestDto?.InvoiceRequest?.Header?.DateTime;
+        var from = requestFrom.HasValue ? requestFrom.Value.AddMinutes(-1) : DateTime.MinValue;
+        var to = requestTo.HasValue ? requestTo.Value.AddMinutes(1) : DateTime.Now;
+
+        var vatCustomers = await _queryService.GetCustomerVatNumbersAsync(from, to);
         PairReqeutsWithVatCustomers(requests, vatCustomers);
 
         var repairRequests = requests.Select(x => CreateRepairRequest(++lastReceiptNumber, sellerTaxNumber, x)).ToList();
