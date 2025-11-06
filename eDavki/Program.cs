@@ -8,7 +8,7 @@ class Program
     {
         // Root directory containing log files (can include subfolders)
         string rootDir = "C:\\Users\\behro\\Downloads\\N670\\N670";
-        string outputRoot = Path.Combine(rootDir, "C:\\Users\\behro\\DownloadsExtractedInvoices");
+        string outputRoot = Path.Combine(rootDir, "C:\\Users\\behro\\Downloads\\ExtractedInvoices");
         Directory.CreateDirectory(outputRoot);
 
         // Regex to capture JSON inside quotes after "Fiscal receipt request:"

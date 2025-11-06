@@ -114,7 +114,9 @@ public static partial class Program
             return;
         }
 
-        (var success, var failed, var failedST) = await SendRequestsAsync(repairRequests, _certificate);
+        (var success, var failed, var failedST) = await SendRequestsAsync(repairRequests,
+                                                                          _certificate,
+                                                                          receiptNumber);
         Console.WriteLine($"\r\nFinished processing requests. Success: {success}, Failed: {failed}");
         if (failedST.Any())
         {
@@ -241,7 +243,7 @@ public static partial class Program
         return bpTaxIdentification != merchantTaxNumber ? merchantTaxNumber : null;
     }
 
-    private static async Task<(int, int, List<string>)> SendRequestsAsync(List<InvoiceRequest> repairRequests, X509Certificate2 certificate)
+    private static async Task<(int, int, List<string>)> SendRequestsAsync(List<InvoiceRequest> repairRequests, X509Certificate2 certificate, int receiptNumber)
     {
         int i = 0;
         int success = 0;
@@ -249,7 +251,8 @@ public static partial class Program
         List<string> failedST = new List<string>();
         foreach (var requestDto in repairRequests)
         {
-            Console.Write($"Sending receipt {++i}/{repairRequests.Count}\t{GetReferencInvoiceNumber(requestDto)}");
+            requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.InvoiceNumber = (++receiptNumber).ToString();
+            Console.Write($"Sending receipt {++i}/{repairRequests.Count}\t{GetReferencInvoiceNumber(requestDto)}\t{GetInvoiceNumber(requestDto)}");
 
             var signedRequest = certificate.SignObject(requestDto.InvoiceRequestDto);
             var response = await _eDavkiApiClient.PostReceiptAsync(signedRequest);
@@ -257,6 +260,7 @@ public static partial class Program
             var fiscalizationResult = await response.GetFiscalizationResultAsync();
             if (fiscalizationResult.IsFailed)
             {
+                receiptNumber--;
                 var reasonCode = fiscalizationResult.GetReasonCode();
                 Console.WriteLine($"\tFailed to fiscalize receipt {requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier}: {reasonCode}");
                 failed++;
@@ -290,6 +294,11 @@ public static partial class Program
             }
         }
         return (success, failed, failedST);
+    }
+
+    private static object GetInvoiceNumber(InvoiceRequest requestDto)
+    {
+        return $"{requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID}-{requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.ElectronicDeviceID}-{requestDto.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.InvoiceNumber}";
     }
 
     private static void SaveResult(string directory,
