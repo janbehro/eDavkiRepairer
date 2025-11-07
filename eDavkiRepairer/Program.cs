@@ -77,20 +77,14 @@ public static partial class Program
         Console.WriteLine($"\r\nThere are {salesTransactionsToChangeVatNumber.Count()} sales transactions without VAT number between {vatNumberDateFrom} and {vatNubmerDateTo} for merchant tax number {merchantTaxNumber}. These sales transactions will not have VAT number updated in the repaired receipts.\r\n");
 
         var vatNumberChangeRequestst = GetVatNumberChangeRequests(salesTransactionsToChangeVatNumber,
-                                                                  merchantTaxNumber.GetTaxNumber(),
+                                                                  38334895,
                                                                   sellerTaxNumber,
                                                                   ref lastReceiptNumber).ToList();
         PrintRequests(vatNumberChangeRequestst);
         repairRequests.AddRange(vatNumberChangeRequestst);
 
-        Console.WriteLine($"\r\nPath {_appSettings.RequestsDirectory} contains {repairRequests.Count} requests. Last receipt number is {receiptNumber}. Do you want to proceed? y\\n");
-        var proceed = Console.ReadKey(true);
-        if (proceed.Key != ConsoleKey.Y)
-        {
-            return;
-        }
-
 #if DEBUG
+        Console.WriteLine("\r\nDEBUG MODE: Overriding tax number and business premise ID from certificate subject!");
         string? ou = _certificate.Subject
                     .Split(',')
                     .Select(part => part.Trim())
@@ -105,6 +99,14 @@ public static partial class Program
             req.InvoiceRequestDto.InvoiceRequest.Invoice.InvoiceIdentifier.BusinessPremiseID = "136";
         }
 #endif
+
+        Console.WriteLine($"\r\nPath {_appSettings.RequestsDirectory} contains {repairRequests.Count} requests. Last receipt number is {receiptNumber}. Do you want to proceed? y\\n");
+        var proceed = Console.ReadKey(true);
+        if (proceed.Key != ConsoleKey.Y)
+        {
+            return;
+        }
+
 
 
 

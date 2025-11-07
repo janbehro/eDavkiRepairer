@@ -58,6 +58,7 @@ internal class QueryService
         using var connection = new SqliteConnection(connectionString);
         connection.Open();
         string sql = @$"select st.FRegAdditionalInfo from SalesTransactions st
+                        join Pos p on p.Device_Id = st.DeviceId 
                         where st.FRegAdditionalInfo not null
                         order by SalesTransactionId desc";
 
@@ -138,6 +139,7 @@ internal class QueryService
                         from SalesTransactions st
                         join VatAmount va on va.SalesTransactionId = st.Id
                         join Users u on u.ExternalId = st.CashierId
+                        join Pos p on p.Device_Id = st.DeviceId 
                         where
 	                        st.CustomerVatIdentificationNumber is NULL
 	                        and st.CustomerTaxIdentificationNumber is not NULL";
